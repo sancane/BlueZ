@@ -340,21 +340,31 @@ static void process_thermometer_desc(struct descriptor *desc)
 	bt_uuid16_create(&btuuid, GATT_CLIENT_CHARAC_CFG_UUID);
 
 	if (bt_uuid_cmp(&desc->uuid, &btuuid) == 0) {
+		uint8_t atval[2];
+
 		if (g_strcmp0(ch->attr.uuid,
 					TEMPERATURE_MEASUREMENT_UUID) == 0) {
-			/* TODO: Check if we have to enable it */
-			DBG("C.C.C in Temperature Measurement");
+			if (g_slist_length(ch->t->fwatchers) == 0)
+				return;
+
+			atval[0] = 0x02;
+			atval[1] = 0x00;
 		} else if (g_strcmp0(ch->attr.uuid,
 					INTERMEDIATE_TEMPERATURE_UUID) == 0) {
-			/* TODO: Check if we have to enable it */
-			DBG("C.C.C in Intermediate Temperature");
+			if (g_slist_length(ch->t->iwatchers) == 0)
+				return;
+
+			atval[0] = 0x01;
+			atval[1] = 0x00;
 		} else if (g_strcmp0(ch->attr.uuid,
 					MEASUREMENT_INTERVAL_UUID) == 0) {
-			/* TODO: Enable indications */
-			DBG("C.C.C in Measurement Interval");
+			atval[0] = 0x02;
+			atval[1] = 0x00;
 		} else
 			goto done;
 
+		gatt_write_char(ch->t->attrib, desc->handle, atval, 2,
+								NULL, NULL);
 		return;
 	}
 
