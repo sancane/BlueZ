@@ -599,6 +599,9 @@ static DBusMessage *write_attr_interval(struct thermometer *t, DBusMessage *msg,
 	struct characteristic *ch;
 	guint8 atval[2];
 
+	if (t->attrib == NULL)
+		return btd_error_not_connected(msg);
+
 	ch = get_characteristic(t, MEASUREMENT_INTERVAL_UUID);
 	if (ch == NULL)
 		return btd_error_not_available(msg);
@@ -672,6 +675,9 @@ static void enable_final_measurement(struct thermometer *t)
 	uint8_t atval[2];
 	gchar *msg;
 
+	if (t->attrib == NULL)
+		return;
+
 	ch = get_characteristic(t, TEMPERATURE_MEASUREMENT_UUID);
 	if (ch == NULL) {
 		DBG("Temperature measurement characteristic not found");
@@ -698,6 +704,9 @@ static void enable_intermediate_measurement(struct thermometer *t)
 	bt_uuid_t btuuid;
 	uint8_t atval[2];
 	gchar *msg;
+
+	if (t->attrib == NULL)
+		return;
 
 	ch = get_characteristic(t, INTERMEDIATE_TEMPERATURE_UUID);
 	if (ch == NULL) {
@@ -726,6 +735,9 @@ static void disable_final_measurement(struct thermometer *t)
 	uint8_t atval[2];
 	gchar *msg;
 
+	if (t->attrib == NULL)
+		return;
+
 	ch = get_characteristic(t, TEMPERATURE_MEASUREMENT_UUID);
 	if (ch == NULL) {
 		DBG("Temperature measurement characteristic not found");
@@ -752,6 +764,9 @@ static void disable_intermediate_measurement(struct thermometer *t)
 	bt_uuid_t btuuid;
 	uint8_t atval[2];
 	gchar *msg;
+
+	if (t->attrib == NULL)
+		return;
 
 	ch = get_characteristic(t, INTERMEDIATE_TEMPERATURE_UUID);
 	if (ch == NULL) {
