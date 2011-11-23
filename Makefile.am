@@ -249,6 +249,12 @@ builtin_sources += thermometer/main.c \
 			thermometer/thermometer.h thermometer/thermometer.c
 endif
 
+if HEARTRATE
+builtin_modules += heartrate
+builtin_sources += heartrate/main.c \
+			heartrate/manager.h heartrate/manager.c
+endif
+
 builtin_modules += hciops mgmtops
 builtin_sources += plugins/hciops.c plugins/mgmtops.c
 
