@@ -220,6 +220,9 @@ endif
 if GATT_EXAMPLE_PLUGIN
 builtin_modules += gatt_example
 builtin_sources += plugins/gatt-example.c
+
+builtin_modules += heartrate_svc
+builtin_sources += plugins/heartrate-svc.c
 endif
 
 if TIMEPLUGIN
