@@ -62,11 +62,11 @@ static const HRVALFormat hr_value_format = HR_FORMAT_VAL_UINT8;
 static const BodySensorLocation bslocation = BODY_SENSOR_CHEST;
 static const gboolean energy_expended = TRUE;
 
-
 static uint16_t hrhandle;
 static guint sourceid;
 static guint ttcounter = 0;
 static uint16_t rrinterval = 0;
+static uint8_t hr_ctrl_point;
 
 const char *body_sensor_location[] = {
 	"Other",
@@ -194,8 +194,15 @@ static uint8_t body_sensor_location_cb(struct attribute *a, gpointer user_data)
 
 static uint8_t hr_ctrl_point_cb(struct attribute *a, gpointer user_data)
 {
-	DBG("TODO:");
-	return 0;
+	if (a->len != 1) {
+		DBG("Invalid control point value size: %d", a->len);
+		return 0;
+	}
+
+	hr_ctrl_point = a->data[0];
+	DBG("handle 0x%04x, new value %d", a->handle, hr_ctrl_point);
+
+        return 0;
 }
 
 static void register_hr_service(void)
