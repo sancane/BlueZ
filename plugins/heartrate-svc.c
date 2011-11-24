@@ -48,7 +48,18 @@ typedef enum {
 	HR_FORMAT_VAL_UINT16
 } HRVALFormat;
 
+typedef enum {
+	BODY_SENSOR_OTHER = 0,
+	BODY_SENSOR_CHEST,
+	BODY_SENSOR_WRIST,
+	BODY_SENSOR_FINGER,
+	BODY_SENSOR_HAND,
+	BODY_SENSOR_EAR_LOBE,
+	BODY_SENSOR_FOOT
+} BodySensorLocation;
+
 static const HRVALFormat hr_value_format = HR_FORMAT_VAL_UINT8;
+static const BodySensorLocation bslocation = BODY_SENSOR_CHEST;
 static const gboolean energy_expended = TRUE;
 
 
@@ -56,6 +67,25 @@ static uint16_t hrhandle;
 static guint sourceid;
 static guint ttcounter = 0;
 static uint16_t rrinterval = 0;
+
+const char *body_sensor_location[] = {
+	"Other",
+	"Chest",
+	"Wrist",
+	"Finger",
+	"Hand",
+	"Ear Lobe",
+	"Foot"
+};
+
+static const gchar *bsl2str(uint8_t value)
+{
+	 if (value > 0 && value < G_N_ELEMENTS(body_sensor_location))
+		return body_sensor_location[value];
+
+	error("Body sensor location %d reserved for future use", value);
+	return NULL;
+}
 
 static uint8_t get_size()
 {
@@ -148,7 +178,17 @@ static gboolean hr_notification(gpointer data)
 
 static uint8_t body_sensor_location_cb(struct attribute *a, gpointer user_data)
 {
-	DBG("TODO:");
+	const char *msg = bsl2str(bslocation);
+	uint8_t val;
+
+	if (msg == NULL)
+		return ATT_ECODE_IO;
+
+	DBG("Read body sensor location 0x%04x value: %s", a->handle, msg);
+
+	val = bslocation;
+	attrib_db_update(a->handle, NULL, &val, 1, NULL);
+
 	return 0;
 }
 
