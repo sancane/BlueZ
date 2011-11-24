@@ -40,6 +40,112 @@
 #define BODY_SENSOR_LOCATION		0x2A38
 #define HEART_RATE_CTRL_POINT		0x2A39
 
+#define TRANSMISSION_INTERVAL	1	/* seconds */
+#define RR_INTERVAL		10	/* seconds */
+
+typedef enum {
+	HR_FORMAT_VAL_UINT8 = 0,
+	HR_FORMAT_VAL_UINT16
+} HRVALFormat;
+
+static const HRVALFormat hr_value_format = HR_FORMAT_VAL_UINT8;
+static const gboolean energy_expended = TRUE;
+
+
+static uint16_t hrhandle;
+static guint sourceid;
+static guint ttcounter = 0;
+static uint16_t rrinterval = 0;
+
+static uint8_t get_size()
+{
+	uint8_t size = 1;
+
+	switch(hr_value_format) {
+	case HR_FORMAT_VAL_UINT8:
+		size += 1;
+		break;
+
+	case HR_FORMAT_VAL_UINT16:
+		size += 2;
+		break;
+
+	default:
+		error("Heart rate value format %d not supported",
+							hr_value_format);
+		return 0;
+	};
+
+	if (energy_expended)
+		size += 2;
+
+	ttcounter = (ttcounter + 1) % RR_INTERVAL;
+	if (ttcounter == (RR_INTERVAL - 1))
+		size += 2;
+
+	return size;
+}
+
+static gboolean create_measure(uint8_t **value, uint8_t *size)
+{
+	uint8_t *val, len, index;
+
+	len = get_size();
+	if (len == 0)
+		return FALSE;
+
+	val = g_new0(uint8_t, len);
+	index = 1;
+
+	switch(hr_value_format) {
+	case HR_FORMAT_VAL_UINT8:
+		att_put_u8(125, &val[index]);
+		index += 1;
+		break;
+
+	case HR_FORMAT_VAL_UINT16:
+		val[0] |= 0x01;
+		att_put_u16(325, &val[index]);
+		index += 2;
+		break;
+
+	default:
+		g_free(val);
+		return FALSE;
+	};
+
+	if (energy_expended) {
+		val[0] |= 0x08;
+		att_put_u16(110, &val[index]);
+		index += 2;
+	}
+
+	if (ttcounter == (RR_INTERVAL - 1)) {
+		val[0] |= 0x10;
+		att_put_u16(rrinterval++, &val[index]);
+	}
+
+	*value = val;
+	*size = len;
+
+	return TRUE;
+}
+
+static gboolean hr_notification(gpointer data)
+{
+	uint8_t *value, len;
+
+	if (!create_measure(&value, &len)) {
+		error("Can't generate measurement");
+		return FALSE;
+	}
+
+	attrib_db_update(hrhandle, NULL, value, len, NULL);
+	g_free(value);
+
+	return TRUE;
+}
+
 static uint8_t body_sensor_location_cb(struct attribute *a, gpointer user_data)
 {
 	DBG("TODO:");
@@ -58,6 +164,7 @@ static void register_hr_service(void)
 			/* heart rate characteristic */
 			GATT_OPT_CHR_UUID, HEART_RATE_MEASUREMENT,
 			GATT_OPT_CHR_PROPS, ATT_CHAR_PROPER_NOTIFY,
+			GATT_OPT_CHR_VALUE_GET_HANDLE, &hrhandle,
 
 			/* body sensor location characteristic */
 			GATT_OPT_CHR_UUID, BODY_SENSOR_LOCATION,
@@ -72,6 +179,9 @@ static void register_hr_service(void)
 							hr_ctrl_point_cb,
 
 			GATT_OPT_INVALID);
+
+	sourceid = g_timeout_add_seconds(TRANSMISSION_INTERVAL, hr_notification,
+									NULL);
 }
 
 static int heartrate_init(void)
@@ -84,6 +194,7 @@ static int heartrate_init(void)
 static void heartrate_exit(void)
 {
 	DBG("Heartrate exit");
+	g_source_remove(sourceid);
 }
 
 BLUETOOTH_PLUGIN_DEFINE(heartrate_svc, VERSION, BLUETOOTH_PLUGIN_PRIORITY_LOW,
