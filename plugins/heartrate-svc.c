@@ -35,6 +35,10 @@
 #include "att.h"
 #include "attrib-server.h"
 
+/* Macros to control optional parts in heart rate service */
+#define ENABLE_BODY_SENSOR_SUPPORT	TRUE
+#define ENABLE_ENERGY_EXPENDED		TRUE
+
 #define HEART_RATE_SVC_UUID		0x180D
 #define HEART_RATE_MEASUREMENT		0x2A37
 #define BODY_SENSOR_LOCATION		0x2A38
@@ -48,6 +52,18 @@ typedef enum {
 	HR_FORMAT_VAL_UINT16
 } HRVALFormat;
 
+static const HRVALFormat hr_value_format = HR_FORMAT_VAL_UINT8;
+
+static uint16_t hrhandle;
+static guint sourceid;
+static guint ttcounter = 0;
+static uint16_t rrinterval = 0;
+
+#if ENABLE_ENERGY_EXPENDED
+static uint8_t hr_ctrl_point;
+#endif
+
+#if ENABLE_BODY_SENSOR_SUPPORT
 typedef enum {
 	BODY_SENSOR_OTHER = 0,
 	BODY_SENSOR_CHEST,
@@ -57,16 +73,6 @@ typedef enum {
 	BODY_SENSOR_EAR_LOBE,
 	BODY_SENSOR_FOOT
 } BodySensorLocation;
-
-static const HRVALFormat hr_value_format = HR_FORMAT_VAL_UINT8;
-static const BodySensorLocation bslocation = BODY_SENSOR_CHEST;
-static const gboolean energy_expended = TRUE;
-
-static uint16_t hrhandle;
-static guint sourceid;
-static guint ttcounter = 0;
-static uint16_t rrinterval = 0;
-static uint8_t hr_ctrl_point;
 
 const char *body_sensor_location[] = {
 	"Other",
@@ -78,6 +84,8 @@ const char *body_sensor_location[] = {
 	"Foot"
 };
 
+static const BodySensorLocation bslocation = BODY_SENSOR_CHEST;
+
 static const gchar *bsl2str(uint8_t value)
 {
 	 if (value > 0 && value < G_N_ELEMENTS(body_sensor_location))
@@ -86,6 +94,7 @@ static const gchar *bsl2str(uint8_t value)
 	error("Body sensor location %d reserved for future use", value);
 	return NULL;
 }
+#endif
 
 static uint8_t get_size()
 {
@@ -106,8 +115,9 @@ static uint8_t get_size()
 		return 0;
 	};
 
-	if (energy_expended)
-		size += 2;
+#if ENABLE_ENERGY_EXPENDED
+	size += 2;
+#endif
 
 	ttcounter = (ttcounter + 1) % RR_INTERVAL;
 	if (ttcounter == (RR_INTERVAL - 1))
@@ -144,11 +154,11 @@ static gboolean create_measure(uint8_t **value, uint8_t *size)
 		return FALSE;
 	};
 
-	if (energy_expended) {
-		val[0] |= 0x08;
-		att_put_u16(110, &val[index]);
-		index += 2;
-	}
+#if ENABLE_ENERGY_EXPENDED
+	val[0] |= 0x08;
+	att_put_u16(110, &val[index]);
+	index += 2;
+#endif
 
 	if (ttcounter == (RR_INTERVAL - 1)) {
 		val[0] |= 0x10;
@@ -163,12 +173,15 @@ static gboolean create_measure(uint8_t **value, uint8_t *size)
 
 static gboolean hr_notification(gpointer data)
 {
-	uint8_t *value, len;
+	uint8_t *value, len, i;
 
 	if (!create_measure(&value, &len)) {
 		error("Can't generate measurement");
 		return FALSE;
 	}
+
+	for (i = 0; i < len; i++)
+		DBG("0x%02x", value[i]);
 
 	attrib_db_update(hrhandle, NULL, value, len, NULL);
 	g_free(value);
@@ -176,6 +189,7 @@ static gboolean hr_notification(gpointer data)
 	return TRUE;
 }
 
+#if ENABLE_BODY_SENSOR_SUPPORT
 static uint8_t body_sensor_location_cb(struct attribute *a, gpointer user_data)
 {
 	const char *msg = bsl2str(bslocation);
@@ -191,7 +205,9 @@ static uint8_t body_sensor_location_cb(struct attribute *a, gpointer user_data)
 
 	return 0;
 }
+#endif
 
+#if ENABLE_ENERGY_EXPENDED
 static uint8_t hr_ctrl_point_cb(struct attribute *a, gpointer user_data)
 {
 	if (a->len != 1) {
@@ -204,6 +220,7 @@ static uint8_t hr_ctrl_point_cb(struct attribute *a, gpointer user_data)
 
         return 0;
 }
+#endif
 
 static void register_hr_service(void)
 {
@@ -213,18 +230,20 @@ static void register_hr_service(void)
 			GATT_OPT_CHR_PROPS, ATT_CHAR_PROPER_NOTIFY,
 			GATT_OPT_CHR_VALUE_GET_HANDLE, &hrhandle,
 
+#if ENABLE_BODY_SENSOR_SUPPORT
 			/* body sensor location characteristic */
 			GATT_OPT_CHR_UUID, BODY_SENSOR_LOCATION,
 			GATT_OPT_CHR_PROPS, ATT_CHAR_PROPER_READ,
 			GATT_OPT_CHR_VALUE_CB, ATTRIB_READ,
 							body_sensor_location_cb,
-
+#endif
+#if ENABLE_ENERGY_EXPENDED
 			/* heart rate control point characteristic */
 			GATT_OPT_CHR_UUID, HEART_RATE_CTRL_POINT,
 			GATT_OPT_CHR_PROPS, ATT_CHAR_PROPER_WRITE,
 			GATT_OPT_CHR_VALUE_CB, ATTRIB_WRITE,
 							hr_ctrl_point_cb,
-
+#endif
 			GATT_OPT_INVALID);
 
 	sourceid = g_timeout_add_seconds(TRANSMISSION_INTERVAL, hr_notification,
