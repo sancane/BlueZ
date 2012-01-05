@@ -114,6 +114,25 @@ static GSList *parse_opts(gatt_option opt1, va_list args)
 	return l;
 }
 
+static struct attribute *att_add_uuid(struct btd_adapter *adapter,
+		uint16_t handle, bt_uuid_t *uuid, int read_req, int write_req)
+{
+	uint8_t atval[16];
+	int len;
+
+	if (uuid->type == BT_UUID16) {
+		att_put_u16(uuid->value.u16, &atval[0]);
+		len = 2;
+	} else if (uuid->type == BT_UUID128) {
+		att_put_u128(uuid->value.u128, &atval[0]);
+		len = 16;
+	} else
+		return NULL;
+
+	return attrib_db_add(adapter, handle, uuid, read_req, write_req, atval,
+									len);
+}
+
 static int att_read_reqs(int authorization, int authentication, uint8_t props)
 {
 	if (authorization == GATT_CHR_VALUE_READ ||
@@ -248,14 +267,20 @@ static void free_gatt_info(void *data)
 }
 
 gboolean gatt_service_add(struct btd_adapter *adapter, uint16_t uuid,
-				uint16_t svc_uuid, gatt_option opt1, ...)
+				bt_uuid_t svc_uuid, gatt_option opt1, ...)
 {
+	char uuidstr[MAX_LEN_UUID_STR];
 	uint16_t start_handle, h;
 	unsigned int size;
-	bt_uuid_t bt_uuid;
-	uint8_t atval[2];
 	va_list args;
 	GSList *chrs, *l;
+
+	bt_uuid_to_string(&svc_uuid, uuidstr, MAX_LEN_UUID_STR);
+
+	if (svc_uuid.type != BT_UUID16 && svc_uuid.type != BT_UUID128) {
+		error("Invalid service uuid: %s", uuidstr);
+		return FALSE;
+	}
 
 	va_start(args, opt1);
 	chrs = parse_opts(opt1, args);
@@ -272,15 +297,13 @@ gboolean gatt_service_add(struct btd_adapter *adapter, uint16_t uuid,
 		return FALSE;
 	}
 
-	DBG("New service: handle 0x%04x, UUID 0x%04x, %d attributes",
-						start_handle, svc_uuid, size);
+	DBG("New service: handle 0x%04x, UUID %s, %d attributes",
+						start_handle, uuidstr, size);
 
 	/* service declaration */
 	h = start_handle;
-	bt_uuid16_create(&bt_uuid, uuid);
-	att_put_u16(svc_uuid, &atval[0]);
-	attrib_db_add(adapter, h++, &bt_uuid, ATT_NONE, ATT_NOT_PERMITTED,
-							atval, sizeof(atval));
+	att_add_uuid(adapter, h++, &svc_uuid, ATT_NONE, ATT_NOT_PERMITTED);
+
 	for (l = chrs; l != NULL; l = l->next) {
 		struct gatt_info *info = l->data;
 
@@ -290,7 +313,6 @@ gboolean gatt_service_add(struct btd_adapter *adapter, uint16_t uuid,
 			return FALSE;
 		}
 	}
-
 	g_assert(size < USHRT_MAX);
 	g_assert(h - start_handle == (uint16_t) size);
 	g_slist_free_full(chrs, free_gatt_info);
